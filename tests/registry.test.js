@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runCli, startPreview } from '../src/cli.js';
+import { makePdf } from './pdf-fixture.js';
 
 const previews = [];
 const stateDirs = [];
@@ -15,7 +16,7 @@ afterEach(async () => {
 async function makePdfFixture() {
   const dir = await mkdtemp(join(tmpdir(), 'latexview-registry-'));
   const pdfPath = join(dir, 'main.pdf');
-  await writeFile(pdfPath, '%PDF-1.4\n% registry bytes\n%%EOF\n');
+  await writeFile(pdfPath, makePdf(['registry bytes']));
   return {
     dir,
     pdfPath,

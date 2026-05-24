@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createLatexViewServer, formatSseEvent } from '../src/server.js';
+import { makePdf } from './pdf-fixture.js';
 
 const servers = [];
 
@@ -14,7 +15,7 @@ afterEach(async () => {
 async function makePdfFixture() {
   const dir = await mkdtemp(join(tmpdir(), 'latexview-'));
   const pdfPath = join(dir, 'main.pdf');
-  await writeFile(pdfPath, '%PDF-1.4\n% demo bytes\n%%EOF\n');
+  await writeFile(pdfPath, makePdf(['demo bytes']));
   return {
     dir,
     pdfPath,
@@ -112,11 +113,11 @@ describe('server', () => {
       const duringCompile = await fetch(`${baseUrl}/document.pdf?version=during`);
       expect(await duringCompile.text()).toBe(originalText);
 
-      await writeFile(fixture.pdfPath, '%PDF-1.4\n% complete compile output\n%%EOF\n');
+      await writeFile(fixture.pdfPath, makePdf(['complete compile output']));
       await delay(180);
 
       const afterCompile = await fetch(`${baseUrl}/document.pdf?version=after`);
-      expect(await afterCompile.text()).toContain('% complete compile output');
+      expect(await afterCompile.text()).toContain('complete compile output');
     } finally {
       await fixture.cleanup();
     }
@@ -141,7 +142,7 @@ describe('server', () => {
       expect(startText).toContain('event: compile-start');
       expect(startText).not.toContain('event: update');
 
-      await writeFile(fixture.pdfPath, '%PDF-1.4\n% complete compile output\n%%EOF\n');
+      await writeFile(fixture.pdfPath, makePdf(['complete compile output']));
       const endText = await readUntil(reader, 'event: update');
       await reader.cancel();
 
@@ -150,6 +151,34 @@ describe('server', () => {
       expect(endText.indexOf('event: compile-end')).toBeLessThan(endText.indexOf('event: update'));
     } finally {
       await fixture.cleanup();
+    }
+  });
+
+  test('does not promote a PDF that has an EOF marker but cannot be parsed', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'latexview-invalid-pdf-'));
+    const pdfPath = join(dir, 'main.pdf');
+
+    try {
+      await writeFile(pdfPath, makePdf(['stable PDF']));
+      const preview = createLatexViewServer({
+        pdfPath,
+        watchIntervalMs: 10,
+        compileSettleMs: 60
+      });
+      const url = await listen(preview);
+      const baseUrl = new URL(url).origin;
+
+      const originalPdf = await fetch(`${baseUrl}/document.pdf?version=original`);
+      const originalBytes = await originalPdf.arrayBuffer();
+
+      await writeFile(pdfPath, '%PDF-1.4\n% invalid but has EOF\n%%EOF\n');
+      await delay(120);
+
+      const afterInvalidCompile = await fetch(`${baseUrl}/document.pdf?version=invalid`);
+      const afterInvalidBytes = await afterInvalidCompile.arrayBuffer();
+      expect(Buffer.from(afterInvalidBytes)).toEqual(Buffer.from(originalBytes));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
     }
   });
 

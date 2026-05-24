@@ -30,6 +30,7 @@ const state = {
   totalPages: 0,
   version: Date.now(),
   renderTask: null,
+  loadGeneration: 0,
   reloadTimer: null,
   resizeTimer: null,
   thumbnailItems: new Map(),
@@ -328,6 +329,10 @@ async function renderThumbnail({ pageNumber, canvas, generation }) {
 }
 
 async function loadDocument({ preservePage = true, retry = 0 } = {}) {
+  clearTimeout(state.reloadTimer);
+  state.reloadTimer = null;
+  const loadGeneration = state.loadGeneration + 1;
+  state.loadGeneration = loadGeneration;
   const requestedPage = preservePage ? state.page : pageFromUrl();
   const hasVisibleDocument = Boolean(state.pdf);
   setStatus(
@@ -352,6 +357,11 @@ async function loadDocument({ preservePage = true, retry = 0 } = {}) {
       disableStream: true
     });
     const pdf = await task.promise;
+    if (loadGeneration !== state.loadGeneration) {
+      await pdf.destroy();
+      return;
+    }
+    await cancelRender();
     if (oldDocument) {
       await oldDocument.destroy();
     }

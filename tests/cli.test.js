@@ -14,7 +14,7 @@ afterEach(async () => {
 async function makePdfFixture() {
   const dir = await mkdtemp(join(tmpdir(), 'latexview-cli-'));
   const pdfPath = join(dir, 'main.pdf');
-  await writeFile(pdfPath, '%PDF-1.4\n% cli demo bytes\n%%EOF\n');
+  await writeFile(pdfPath, makePdf(['cli demo bytes']));
   return {
     pdfPath,
     async cleanup() {

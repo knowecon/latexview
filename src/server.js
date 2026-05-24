@@ -1,8 +1,10 @@
 import { unwatchFile, watchFile } from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
 import { extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 const rootDir = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const publicDir = join(rootDir, 'public');
@@ -70,8 +72,7 @@ function safeVendorPath(baseDir, pathname, prefix) {
   return join(baseDir, rawName);
 }
 
-function servePdf(request, response, snapshot) {
-  const bytes = snapshot.bytes;
+function servePdfBytes(request, response, bytes) {
   const size = bytes.length;
   const range = parseRange(request.headers.range, size);
 
@@ -106,12 +107,57 @@ async function readPdfSnapshot(pdfPath) {
   };
 }
 
+async function makePdfCache(pdfPath) {
+  const cacheDir = await mkdtemp(join(tmpdir(), 'latexview-cache-'));
+  const cachePath = join(cacheDir, pdfPath.split('/').at(-1) || 'document.pdf');
+
+  async function replace(bytes) {
+    const nextPath = join(cacheDir, `.next-${process.pid}-${Date.now()}.pdf`);
+    await writeFile(nextPath, bytes);
+    await rename(nextPath, cachePath);
+  }
+
+  return {
+    async initialize() {
+      await copyFile(pdfPath, cachePath);
+    },
+    async read() {
+      return readFile(cachePath);
+    },
+    replace,
+    async close() {
+      await rm(cacheDir, { recursive: true, force: true });
+    }
+  };
+}
+
 function looksCompletePdf(bytes) {
   if (bytes.length === 0) return false;
   const header = bytes.subarray(0, 5).toString('latin1');
   if (header !== '%PDF-') return false;
   const trailer = bytes.subarray(Math.max(0, bytes.length - 4096)).toString('latin1');
   return trailer.includes('%%EOF');
+}
+
+async function canParsePdf(bytes) {
+  let document;
+  try {
+    document = await pdfjsLib.getDocument({
+      data: new Uint8Array(bytes),
+      disableWorker: true,
+      useSystemFonts: true,
+      verbosity: pdfjsLib.VerbosityLevel.ERRORS
+    }).promise;
+    if (!document.numPages) return false;
+    await document.getPage(1);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (document) {
+      await document.destroy();
+    }
+  }
 }
 
 function snapshotVersion(snapshot, previousVersion) {
@@ -133,7 +179,7 @@ export function createLatexViewServer(options) {
   const watchIntervalMs = options.watchIntervalMs ?? 350;
   const compileSettleMs = options.compileSettleMs ?? 600;
   let version = 1;
-  let stableSnapshot;
+  let pdfCache;
   let compileTimer;
   let compileGeneration = 0;
   let compiling = false;
@@ -197,7 +243,14 @@ export function createLatexViewServer(options) {
       return;
     }
 
-    stableSnapshot = snapshot;
+    if (!(await canParsePdf(snapshot.bytes))) {
+      broadcast('compile-waiting', snapshotPayload(snapshot, {
+        reason: 'unparseable-pdf'
+      }));
+      return;
+    }
+
+    await pdfCache.replace(snapshot.bytes);
     version = snapshotVersion(snapshot, version);
     compiling = false;
 
@@ -267,7 +320,8 @@ export function createLatexViewServer(options) {
       }
 
       if (url.pathname === '/document.pdf') {
-        servePdf(request, response, stableSnapshot);
+        const bytes = await pdfCache.read();
+        servePdfBytes(request, response, bytes);
         return;
       }
 
@@ -332,8 +386,13 @@ export function createLatexViewServer(options) {
   }
 
   async function listen({ host, port }) {
-    stableSnapshot = await readPdfSnapshot(pdfPath);
-    version = snapshotVersion(stableSnapshot, 0);
+    const initialSnapshot = await readPdfSnapshot(pdfPath);
+    if (!looksCompletePdf(initialSnapshot.bytes) || !(await canParsePdf(initialSnapshot.bytes))) {
+      throw new Error(`Initial PDF is not parseable: ${pdfPath}`);
+    }
+    pdfCache = await makePdfCache(pdfPath);
+    await pdfCache.initialize();
+    version = snapshotVersion(initialSnapshot, 0);
     server = createServer(handleRequest);
 
     await new Promise((resolveListen, rejectListen) => {
@@ -357,6 +416,7 @@ export function createLatexViewServer(options) {
   async function close() {
     clearTimeout(compileTimer);
     unwatchFile(pdfPath);
+    await pdfCache?.close();
     for (const client of clients) {
       client.end();
     }
