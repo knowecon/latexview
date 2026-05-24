@@ -1,14 +1,43 @@
 import { execFile, spawn } from 'node:child_process';
-import { basename, extname, resolve } from 'node:path';
+import { existsSync } from 'node:fs';
+import { basename, dirname, extname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Type } from 'typebox';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const repoCliPath = resolve(__dirname, '../../bin/latexview.js');
 const DEFAULT_HOST = '127.0.0.1';
 const DEFAULT_PAGE = 1;
 const DEFAULT_DPI = 216;
 
+function resolveCliPath() {
+  if (process.env.LATEXVIEW_CLI) {
+    return resolve(process.cwd(), process.env.LATEXVIEW_CLI);
+  }
+  if (existsSync(repoCliPath)) {
+    return repoCliPath;
+  }
+  return undefined;
+}
+
+function latexviewCommand(args) {
+  const cliPath = resolveCliPath();
+  if (cliPath) {
+    return {
+      command: process.execPath,
+      args: [cliPath, ...args]
+    };
+  }
+  return {
+    command: 'latexview',
+    args
+  };
+}
+
 function runLatexview(args, cwd, signal) {
   return new Promise((resolvePromise, reject) => {
-    execFile('latexview', args, {
+    const invocation = latexviewCommand(args);
+    execFile(invocation.command, invocation.args, {
       cwd,
       signal,
       maxBuffer: 10 * 1024 * 1024
@@ -58,7 +87,8 @@ function startLatexviewServer(params, cwd) {
     else args.push('--no-open');
     args.push(pdfPath);
 
-    const child = spawn('latexview', args, {
+    const invocation = latexviewCommand(args);
+    const child = spawn(invocation.command, invocation.args, {
       cwd,
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe']

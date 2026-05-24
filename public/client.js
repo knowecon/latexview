@@ -329,8 +329,16 @@ async function renderThumbnail({ pageNumber, canvas, generation }) {
 
 async function loadDocument({ preservePage = true, retry = 0 } = {}) {
   const requestedPage = preservePage ? state.page : pageFromUrl();
-  setStatus(retry ? 'retrying' : 'loading', retry ? 'warn' : 'normal');
-  showMessage(retry ? 'Waiting for PDF write to settle' : 'Loading PDF');
+  const hasVisibleDocument = Boolean(state.pdf);
+  setStatus(
+    retry ? 'retrying' : hasVisibleDocument ? 'updating' : 'loading',
+    retry ? 'warn' : 'normal'
+  );
+  if (hasVisibleDocument) {
+    hideMessage();
+  } else {
+    showMessage(retry ? 'Waiting for PDF write to settle' : 'Loading PDF');
+  }
 
   try {
     const oldDocument = state.pdf;
@@ -430,7 +438,29 @@ events.addEventListener('ready', (event) => {
   state.version = data.version ?? state.version;
   fileName.textContent = data.pdfName ?? fileName.textContent;
   markVersion();
-  setStatus('connected');
+  setStatus(data.compiling ? 'compiling' : 'connected', data.compiling ? 'warn' : 'normal');
+});
+events.addEventListener('compile-start', (event) => {
+  const data = JSON.parse(event.data);
+  fileName.textContent = data.pdfName ?? fileName.textContent;
+  hideMessage();
+  setStatus('compiling', 'warn');
+});
+events.addEventListener('compile-waiting', (event) => {
+  const data = JSON.parse(event.data);
+  fileName.textContent = data.pdfName ?? fileName.textContent;
+  hideMessage();
+  setStatus('waiting for PDF', 'warn');
+});
+events.addEventListener('compile-error', (event) => {
+  const data = JSON.parse(event.data);
+  fileName.textContent = data.pdfName ?? fileName.textContent;
+  setStatus('compile error', 'error');
+});
+events.addEventListener('compile-end', (event) => {
+  const data = JSON.parse(event.data);
+  fileName.textContent = data.pdfName ?? fileName.textContent;
+  setStatus('compiled');
 });
 events.addEventListener('update', (event) => {
   const data = JSON.parse(event.data);

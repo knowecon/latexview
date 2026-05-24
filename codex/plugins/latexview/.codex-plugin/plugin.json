@@ -1,7 +1,7 @@
 {
   "name": "latexview",
   "version": "0.1.0",
-  "description": "Codex workflows for inspecting LaTeX PDFs with latexview.",
+  "description": "Codex workflows and tools for inspecting LaTeX PDFs with latexview.",
   "author": {
     "name": "Lucas"
   },
@@ -18,7 +18,7 @@
   "interface": {
     "displayName": "latexview",
     "shortDescription": "Preview, search, jump, and capture LaTeX PDFs.",
-    "longDescription": "latexview gives Codex a project-aware workflow for serving LaTeX PDFs in a browser, finding rendered text, jumping to pages, and capturing crisp WebP page images.",
+    "longDescription": "latexview gives Codex direct tools for serving LaTeX PDFs in a browser, finding rendered text, jumping to pages, and capturing crisp WebP page images.",
     "developerName": "Lucas",
     "category": "Productivity",
     "capabilities": [

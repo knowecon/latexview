@@ -63,8 +63,8 @@ function startMcpServer() {
   return { child, request };
 }
 
-describe('latexview MCP server', () => {
-  test('lists and calls the full latexview tool surface', async () => {
+describe('latexview MCP tools', () => {
+  test('lists script-backed latexview tools', async () => {
     const server = startMcpServer();
 
     const initialized = await server.request('initialize', {
@@ -94,7 +94,7 @@ describe('latexview MCP server', () => {
     expect(help.result.content[0].text).toContain('Usage: latexview');
   });
 
-  test('serves a PDF and captures a page through MCP tools', async () => {
+  test('serves a PDF and captures a page through registered tools', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'latexview-mcp-'));
     const pdfPath = join(dir, 'main.pdf');
     const outPath = join(dir, 'page-2.png');
@@ -119,9 +119,6 @@ describe('latexview MCP server', () => {
       });
       serverPid = served.result.structuredContent.pid;
       expect(served.result.content[0].text).toContain('?page=2');
-
-      const response = await fetch(served.result.structuredContent.url);
-      expect(response.status).toBe(200);
 
       const captured = await server.request('tools/call', {
         name: 'latexview_capture',

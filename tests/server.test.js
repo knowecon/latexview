@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { createLatexViewServer, formatSseEvent } from '../src/server.js';
 
 const servers = [];
@@ -86,6 +87,67 @@ describe('server', () => {
 
       expect(text).toContain('event: update');
       expect(text).toContain('"reason":"test"');
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test('serves the previous stable PDF while a watched PDF is still being rewritten', async () => {
+    const fixture = await makePdfFixture();
+    try {
+      const preview = createLatexViewServer({
+        pdfPath: fixture.pdfPath,
+        watchIntervalMs: 10,
+        compileSettleMs: 120
+      });
+      const url = await listen(preview);
+      const baseUrl = new URL(url).origin;
+
+      const originalPdf = await fetch(`${baseUrl}/document.pdf?version=original`);
+      const originalText = await originalPdf.text();
+
+      await writeFile(fixture.pdfPath, '%PDF-1.4\n% partial compile output\n');
+      await delay(40);
+
+      const duringCompile = await fetch(`${baseUrl}/document.pdf?version=during`);
+      expect(await duringCompile.text()).toBe(originalText);
+
+      await writeFile(fixture.pdfPath, '%PDF-1.4\n% complete compile output\n%%EOF\n');
+      await delay(180);
+
+      const afterCompile = await fetch(`${baseUrl}/document.pdf?version=after`);
+      expect(await afterCompile.text()).toContain('% complete compile output');
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test('streams compile lifecycle events before telling clients to reload', async () => {
+    const fixture = await makePdfFixture();
+    try {
+      const preview = createLatexViewServer({
+        pdfPath: fixture.pdfPath,
+        watchIntervalMs: 10,
+        compileSettleMs: 60
+      });
+      const url = await listen(preview);
+      const baseUrl = new URL(url).origin;
+
+      const events = await fetch(`${baseUrl}/events`);
+      const reader = events.body.getReader();
+
+      await writeFile(fixture.pdfPath, '%PDF-1.4\n% partial compile output\n');
+      const startText = await readUntil(reader, 'event: compile-start');
+      expect(startText).toContain('event: compile-start');
+      expect(startText).not.toContain('event: update');
+
+      await writeFile(fixture.pdfPath, '%PDF-1.4\n% complete compile output\n%%EOF\n');
+      const endText = await readUntil(reader, 'event: update');
+      await reader.cancel();
+
+      expect(endText).toContain('event: compile-end');
+      expect(endText).toContain('event: update');
+      expect(endText.indexOf('event: compile-end')).toBeLessThan(endText.indexOf('event: update'));
     } finally {
       await fixture.cleanup();
     }

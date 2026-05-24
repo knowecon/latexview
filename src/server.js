@@ -1,5 +1,5 @@
-import { createReadStream, statSync, unwatchFile, watchFile } from 'node:fs';
-import { access, readFile, stat } from 'node:fs/promises';
+import { unwatchFile, watchFile } from 'node:fs';
+import { readFile, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -44,13 +44,16 @@ function sendJson(response, status, body) {
 
 function parseRange(rangeHeader, size) {
   if (!rangeHeader?.startsWith('bytes=')) return null;
+  if (size <= 0) return null;
   const [startText, endText] = rangeHeader.slice('bytes='.length).split('-');
   const start = startText === '' ? 0 : Number(startText);
   const end = endText === '' ? size - 1 : Number(endText);
   if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start) {
     return null;
   }
-  return { start, end: Math.min(end, size - 1) };
+  const boundedEnd = Math.min(end, size - 1);
+  if (start >= size || boundedEnd < start) return null;
+  return { start, end: boundedEnd };
 }
 
 async function serveFile(response, filePath, contentType) {
@@ -67,27 +70,52 @@ function safeVendorPath(baseDir, pathname, prefix) {
   return join(baseDir, rawName);
 }
 
-async function servePdf(request, response, pdfPath) {
-  const pdfStat = await stat(pdfPath);
-  const range = parseRange(request.headers.range, pdfStat.size);
+function servePdf(request, response, snapshot) {
+  const bytes = snapshot.bytes;
+  const size = bytes.length;
+  const range = parseRange(request.headers.range, size);
 
   if (range) {
     response.writeHead(206, {
       ...noStoreHeaders('application/pdf'),
       'accept-ranges': 'bytes',
-      'content-range': `bytes ${range.start}-${range.end}/${pdfStat.size}`,
+      'content-range': `bytes ${range.start}-${range.end}/${size}`,
       'content-length': String(range.end - range.start + 1)
     });
-    createReadStream(pdfPath, range).pipe(response);
+    response.end(request.method === 'HEAD' ? undefined : bytes.subarray(range.start, range.end + 1));
     return;
   }
 
   response.writeHead(200, {
     ...noStoreHeaders('application/pdf'),
     'accept-ranges': 'bytes',
-    'content-length': String(pdfStat.size)
+    'content-length': String(size)
   });
-  createReadStream(pdfPath).pipe(response);
+  response.end(request.method === 'HEAD' ? undefined : bytes);
+}
+
+async function readPdfSnapshot(pdfPath) {
+  const [bytes, pdfStat] = await Promise.all([
+    readFile(pdfPath),
+    stat(pdfPath)
+  ]);
+  return {
+    bytes,
+    mtimeMs: pdfStat.mtimeMs,
+    size: pdfStat.size
+  };
+}
+
+function looksCompletePdf(bytes) {
+  if (bytes.length === 0) return false;
+  const header = bytes.subarray(0, 5).toString('latin1');
+  if (header !== '%PDF-') return false;
+  const trailer = bytes.subarray(Math.max(0, bytes.length - 4096)).toString('latin1');
+  return trailer.includes('%%EOF');
+}
+
+function snapshotVersion(snapshot, previousVersion) {
+  return Math.max(1, previousVersion + 1, Math.trunc(snapshot.mtimeMs || Date.now()));
 }
 
 function isViewerRoute(pathname) {
@@ -97,22 +125,18 @@ function isViewerRoute(pathname) {
     || pathname.startsWith('/page/');
 }
 
-function initialVersion(pdfPath) {
-  try {
-    const pdfStat = statSync(pdfPath);
-    return Math.max(1, Math.trunc(pdfStat.mtimeMs));
-  } catch {
-    return Date.now();
-  }
-}
-
 export function createLatexViewServer(options) {
   const pdfPath = resolve(options.pdfPath);
   const pdfName = options.pdfName ?? pdfPath.split('/').at(-1);
   const clients = new Set();
   const watch = options.watch ?? true;
   const watchIntervalMs = options.watchIntervalMs ?? 350;
-  let version = initialVersion(pdfPath);
+  const compileSettleMs = options.compileSettleMs ?? 600;
+  let version = 1;
+  let stableSnapshot;
+  let compileTimer;
+  let compileGeneration = 0;
+  let compiling = false;
   let server;
 
   function broadcast(name, payload) {
@@ -123,12 +147,77 @@ export function createLatexViewServer(options) {
   }
 
   function broadcastUpdate(payload = {}) {
-    version = payload.version ?? Date.now();
+    version = payload.version ?? Math.max(version + 1, Date.now());
     broadcast('update', {
       version,
       pdfName,
       ...payload
     });
+  }
+
+  function snapshotPayload(snapshot, payload = {}) {
+    return {
+      version,
+      pdfName,
+      mtimeMs: snapshot?.mtimeMs,
+      size: snapshot?.size,
+      ...payload
+    };
+  }
+
+  function beginCompile(current) {
+    if (compiling) return;
+    compiling = true;
+    broadcast('compile-start', {
+      pdfName,
+      version,
+      stableVersion: version,
+      mtimeMs: current.mtimeMs,
+      size: current.size
+    });
+  }
+
+  function broadcastCompileProblem(name, error, payload = {}) {
+    broadcast(name, {
+      pdfName,
+      version,
+      error: error.message,
+      ...payload
+    });
+  }
+
+  async function promoteCompiledPdf(generation) {
+    const snapshot = await readPdfSnapshot(pdfPath);
+    if (generation !== compileGeneration) return;
+
+    if (!looksCompletePdf(snapshot.bytes)) {
+      broadcast('compile-waiting', snapshotPayload(snapshot, {
+        reason: 'incomplete-pdf'
+      }));
+      return;
+    }
+
+    stableSnapshot = snapshot;
+    version = snapshotVersion(snapshot, version);
+    compiling = false;
+
+    const payload = snapshotPayload(snapshot, { reason: 'compile-end' });
+    broadcast('compile-end', payload);
+    broadcast('update', payload);
+  }
+
+  function scheduleCompilePromotion() {
+    compileGeneration += 1;
+    const generation = compileGeneration;
+    clearTimeout(compileTimer);
+    compileTimer = setTimeout(() => {
+      compileTimer = undefined;
+      promoteCompiledPdf(generation).catch((error) => {
+        if (generation === compileGeneration) {
+          broadcastCompileProblem('compile-error', error);
+        }
+      });
+    }, compileSettleMs);
   }
 
   async function handleRequest(request, response) {
@@ -147,7 +236,8 @@ export function createLatexViewServer(options) {
           app: 'latexview',
           schemaVersion: 2,
           version,
-          pdfName
+          pdfName,
+          compiling
         });
         return;
       }
@@ -159,7 +249,7 @@ export function createLatexViewServer(options) {
           connection: 'keep-alive',
           'x-accel-buffering': 'no'
         });
-        response.write(formatSseEvent('ready', { version, pdfName }));
+        response.write(formatSseEvent('ready', { version, pdfName, compiling }));
         clients.add(response);
         request.on('close', () => clients.delete(response));
         return;
@@ -177,7 +267,7 @@ export function createLatexViewServer(options) {
       }
 
       if (url.pathname === '/document.pdf') {
-        await servePdf(request, response, pdfPath);
+        servePdf(request, response, stableSnapshot);
         return;
       }
 
@@ -242,7 +332,8 @@ export function createLatexViewServer(options) {
   }
 
   async function listen({ host, port }) {
-    await access(pdfPath);
+    stableSnapshot = await readPdfSnapshot(pdfPath);
+    version = snapshotVersion(stableSnapshot, 0);
     server = createServer(handleRequest);
 
     await new Promise((resolveListen, rejectListen) => {
@@ -256,17 +347,15 @@ export function createLatexViewServer(options) {
     if (watch) {
       watchFile(pdfPath, { interval: watchIntervalMs }, (current, previous) => {
         if (current.mtimeMs !== previous.mtimeMs || current.size !== previous.size) {
-          broadcastUpdate({
-            version: Math.trunc(current.mtimeMs || Date.now()),
-            mtimeMs: current.mtimeMs,
-            size: current.size
-          });
+          beginCompile(current);
+          scheduleCompilePromotion();
         }
       });
     }
   }
 
   async function close() {
+    clearTimeout(compileTimer);
     unwatchFile(pdfPath);
     for (const client of clients) {
       client.end();

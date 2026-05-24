@@ -21,6 +21,8 @@ Use `latexview` when a LaTeX PDF needs to be inspected from an agent-friendly br
 
 ## Plugin Tools
 
+Prefer the registered plugin tools when they are available:
+
 - `latexview_serve`: starts the preview server and returns the viewer URL and pid.
 - `latexview_info`: reads PDF page count and dimensions.
 - `latexview_status`: checks a running viewer.
@@ -38,9 +40,9 @@ Use `latexview` when a LaTeX PDF needs to be inspected from an agent-friendly br
 2. Use `latexview info` to learn page count and dimensions.
 3. Use `latexview inspect --json --pages first,middle,last` for quick QA.
 4. Use `latexview find` for text-to-page lookup when source/PDF alignment is fuzzy.
-5. Use `latexview capture` or `latexview_capture` for one selected page of visual evidence.
+5. Use `latexview_capture` or `latexview capture` for one selected page of visual evidence.
 6. Prefer long text snippets for `find`; short repeated phrases can map to many pages.
-7. Use `latexview_status/list/stop` to clean up long-running viewers.
+7. Use `latexview_status/list/stop` or `latexview list --json` and `latexview stop --all` to clean up long-running viewers.
 8. When testing hot reload, keep the current page stable and verify the browser canvas changes after the PDF is rewritten.
 
 ## Notes

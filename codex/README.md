@@ -7,8 +7,9 @@ This folder is a local Codex marketplace root for the `latexview` plugin.
 - `.agents/plugins/marketplace.json` exposes the local marketplace.
 - `plugins/latexview/.codex-plugin/plugin.json` is the plugin manifest.
 - `plugins/latexview/skills/latexview/SKILL.md` contains the workflow skill.
+- `plugins/latexview/scripts/latexview-tools.js` implements the tool handlers.
 - `plugins/latexview/.mcp.json` registers the MCP server.
-- `plugins/latexview/mcp/latexview-mcp.js` wraps the full CLI tool surface.
+- `plugins/latexview/mcp/latexview-mcp.js` exposes the script-backed tools to Codex.
 
 ## Tools
 
