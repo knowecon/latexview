@@ -1,5 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { accessSync, constants, existsSync } from 'node:fs';
 import { basename, dirname, extname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -13,6 +13,34 @@ const DEFAULT_HOST = '127.0.0.1';
 const DEFAULT_PORT = 4545;
 const DEFAULT_PAGE = 1;
 const DEFAULT_DPI = 216;
+
+function isExecutable(path) {
+  try {
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveNodeCommand() {
+  const candidates = [
+    process.env.LATEXVIEW_NODE,
+    process.env.HOME ? resolve(process.env.HOME, '.asdf/shims/node') : undefined,
+    process.env.HOME ? resolve(process.env.HOME, '.local/share/mise/shims/node') : undefined,
+    '/opt/homebrew/bin/node',
+    '/usr/local/bin/node',
+    process.execPath
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate && existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return 'node';
+}
 
 function resolveCliPath() {
   if (process.env.LATEXVIEW_CLI) {
@@ -33,8 +61,15 @@ function resolveCliPath() {
 function latexviewCommand(args) {
   const cliPath = resolveCliPath();
   if (cliPath) {
+    if (isExecutable(cliPath)) {
+      return {
+        command: cliPath,
+        args
+      };
+    }
+
     return {
-      command: process.execPath,
+      command: resolveNodeCommand(),
       args: [cliPath, ...args]
     };
   }

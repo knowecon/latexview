@@ -115,13 +115,13 @@ describe('latexview MCP tools', () => {
       });
       await mkdir(binDir, { recursive: true });
       await writeFile(fakeCliPath, [
-        '#!/usr/bin/env node',
-        "if (process.argv.includes('--help')) {",
-        "  console.log('Usage: latexview fake');",
-        '  process.exit(0);',
-        '}',
-        "console.error(`unexpected args: ${process.argv.slice(2).join(' ')}`);",
-        'process.exit(1);'
+        '#!/bin/sh',
+        'if [ "$1" = "--help" ]; then',
+        "  echo 'Usage: latexview fake'",
+        '  exit 0',
+        'fi',
+        "echo \"unexpected args: $*\" >&2",
+        'exit 1'
       ].join('\n'));
       await chmod(fakeCliPath, 0o755);
 

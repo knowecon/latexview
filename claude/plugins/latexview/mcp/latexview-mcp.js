@@ -16,7 +16,7 @@ async function handle(message) {
       send(message.id, {
         protocolVersion: message.params?.protocolVersion || '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'latexview', version: '0.1.1' }
+        serverInfo: { name: 'latexview', version: '0.1.2' }
       });
       return;
     }

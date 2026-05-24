@@ -32,6 +32,8 @@ describe('package identity', () => {
     expect(mcpSource).toContain("from './latexview-tools.js'");
     expect(scriptSource).toContain("from '../mcp/latexview-tools.js'");
     expect(toolSource).toContain('.local/bin/latexview');
+    expect(toolSource).toContain('resolveNodeCommand');
+    expect(toolSource).not.toContain('command: process.execPath');
 
     for (const toolName of [
       'latexview_serve',
@@ -73,6 +75,8 @@ describe('package identity', () => {
     expect(mcpSource).toContain("from './latexview-tools.js'");
     expect(scriptSource).toContain("from '../mcp/latexview-tools.js'");
     expect(toolSource).toContain('.local/bin/latexview');
+    expect(toolSource).toContain('resolveNodeCommand');
+    expect(toolSource).not.toContain('command: process.execPath');
     expect(skillSource).toContain('latexview_serve');
 
     for (const toolName of [
