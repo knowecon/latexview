@@ -13,10 +13,8 @@ afterEach(() => {
   }
 });
 
-function startMcpServer() {
-  const child = spawn(process.execPath, [
-    'codex/plugins/latexview/mcp/latexview-mcp.js'
-  ], {
+function startMcpServer(scriptPath = 'codex/plugins/latexview/mcp/latexview-mcp.js') {
+  const child = spawn(process.execPath, [scriptPath], {
     cwd: new URL('../', import.meta.url),
     stdio: ['pipe', 'pipe', 'pipe']
   });
@@ -64,9 +62,7 @@ function startMcpServer() {
 }
 
 describe('latexview MCP tools', () => {
-  test('lists script-backed latexview tools', async () => {
-    const server = startMcpServer();
-
+  async function expectLatexviewToolList(server) {
     const initialized = await server.request('initialize', {
       protocolVersion: '2024-11-05'
     });
@@ -92,6 +88,18 @@ describe('latexview MCP tools', () => {
       arguments: {}
     });
     expect(help.result.content[0].text).toContain('Usage: latexview');
+  }
+
+  test('lists script-backed latexview tools', async () => {
+    const server = startMcpServer();
+
+    await expectLatexviewToolList(server);
+  });
+
+  test('lists Claude plugin MCP tools', async () => {
+    const server = startMcpServer('claude/plugins/latexview/mcp/latexview-mcp.js');
+
+    await expectLatexviewToolList(server);
   });
 
   test('serves a PDF and captures a page through registered tools', async () => {

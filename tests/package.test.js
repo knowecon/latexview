@@ -46,6 +46,45 @@ describe('package identity', () => {
     }
   });
 
+  test('Claude Code plugin marketplace registers self-contained latexview tools', async () => {
+    const marketplace = JSON.parse(await readProjectFile('claude/.claude-plugin/marketplace.json'));
+    const plugin = JSON.parse(await readProjectFile('claude/plugins/latexview/.claude-plugin/plugin.json'));
+    const mcp = JSON.parse(await readProjectFile('claude/plugins/latexview/.mcp.json'));
+    const mcpSource = await readProjectFile('claude/plugins/latexview/mcp/latexview-mcp.js');
+    const scriptSource = await readProjectFile('claude/plugins/latexview/scripts/latexview-tools.js');
+    const skillSource = await readProjectFile('claude/plugins/latexview/skills/latexview/SKILL.md');
+
+    expect(marketplace.name).toBe('latexview-local');
+    expect(marketplace.plugins[0]).toMatchObject({
+      name: 'latexview',
+      source: './plugins/latexview'
+    });
+    expect(plugin.name).toBe('latexview');
+    expect(plugin.mcpServers).toBe('./.mcp.json');
+    expect(mcp.mcpServers.latexview.command).toBe('node');
+    expect(mcp.mcpServers.latexview.args).toEqual([
+      '${CLAUDE_PLUGIN_ROOT}/mcp/latexview-mcp.js'
+    ]);
+    expect(mcp.mcpServers.latexview.cwd).toBe('${CLAUDE_PLUGIN_ROOT}');
+    expect(mcpSource).toContain("from '../scripts/latexview-tools.js'");
+    expect(skillSource).toContain('latexview_serve');
+
+    for (const toolName of [
+      'latexview_serve',
+      'latexview_info',
+      'latexview_status',
+      'latexview_list',
+      'latexview_stop',
+      'latexview_inspect',
+      'latexview_find',
+      'latexview_jump',
+      'latexview_capture',
+      'latexview_help'
+    ]) {
+      expect(scriptSource).toContain(`name: '${toolName}'`);
+    }
+  });
+
   test('Pi extension wraps every latexview CLI command as a tool', async () => {
     const extensionSource = await readProjectFile('pi/extensions/latexview.js');
 

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "latexview": {
+      "command": "node",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/mcp/latexview-mcp.js"
+      ],
+      "cwd": "${CLAUDE_PLUGIN_ROOT}"
+    }
+  }
+}

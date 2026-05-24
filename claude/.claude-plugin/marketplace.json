@@ -1,0 +1,27 @@
+{
+  "name": "latexview-local",
+  "owner": {
+    "name": "Lucas"
+  },
+  "description": "Local Claude Code marketplace for latexview.",
+  "plugins": [
+    {
+      "name": "latexview",
+      "displayName": "latexview",
+      "source": "./plugins/latexview",
+      "description": "Claude Code workflows and tools for inspecting LaTeX PDFs with latexview.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Lucas"
+      },
+      "license": "MIT",
+      "category": "Productivity",
+      "tags": [
+        "latex",
+        "pdf",
+        "preview",
+        "webp"
+      ]
+    }
+  ]
+}
