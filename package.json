@@ -4,10 +4,10 @@
   "description": "Local LaTeX PDF preview server with hot reload, rendered-text lookup, page jumps, and WebP capture.",
   "license": "MIT",
   "type": "module",
-  "homepage": "https://github.com/lulucatdev/latexview#readme",
+  "homepage": "https://github.com/knowecon/latexview#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/lulucatdev/latexview.git"
+    "url": "https://github.com/knowecon/latexview.git"
   },
   "keywords": [
     "latex",
