@@ -1,6 +1,6 @@
 {
   "name": "latexview",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Codex workflows and tools for inspecting LaTeX PDFs with latexview.",
   "author": {
     "name": "Lucas"

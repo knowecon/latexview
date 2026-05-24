@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { toolMap, tools } from '../scripts/latexview-tools.js';
+import { toolMap, tools } from './latexview-tools.js';
 
 function send(id, result, error = undefined) {
   const message = error
@@ -16,7 +16,7 @@ async function handle(message) {
       send(message.id, {
         protocolVersion: message.params?.protocolVersion || '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'latexview', version: '0.1.0' }
+        serverInfo: { name: 'latexview', version: '0.1.1' }
       });
       return;
     }

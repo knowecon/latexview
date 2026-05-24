@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'vitest';
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makePdf } from './pdf-fixture.js';
@@ -13,9 +13,10 @@ afterEach(() => {
   }
 });
 
-function startMcpServer(scriptPath = 'codex/plugins/latexview/mcp/latexview-mcp.js') {
+function startMcpServer(scriptPath = 'codex/plugins/latexview/mcp/latexview-mcp.js', options = {}) {
   const child = spawn(process.execPath, [scriptPath], {
     cwd: new URL('../', import.meta.url),
+    env: options.env || process.env,
     stdio: ['pipe', 'pipe', 'pipe']
   });
   processes.push(child);
@@ -100,6 +101,42 @@ describe('latexview MCP tools', () => {
     const server = startMcpServer('claude/plugins/latexview/mcp/latexview-mcp.js');
 
     await expectLatexviewToolList(server);
+  });
+
+  test('runs from a Codex cache-style mcp-only copy', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'latexview-mcp-cache-'));
+    const home = join(dir, 'home');
+    const binDir = join(home, '.local', 'bin');
+    const fakeCliPath = join(binDir, 'latexview');
+
+    try {
+      await cp(new URL('../codex/plugins/latexview/mcp', import.meta.url), join(dir, 'mcp'), {
+        recursive: true
+      });
+      await mkdir(binDir, { recursive: true });
+      await writeFile(fakeCliPath, [
+        '#!/usr/bin/env node',
+        "if (process.argv.includes('--help')) {",
+        "  console.log('Usage: latexview fake');",
+        '  process.exit(0);',
+        '}',
+        "console.error(`unexpected args: ${process.argv.slice(2).join(' ')}`);",
+        'process.exit(1);'
+      ].join('\n'));
+      await chmod(fakeCliPath, 0o755);
+
+      const server = startMcpServer(join(dir, 'mcp', 'latexview-mcp.js'), {
+        env: {
+          ...process.env,
+          HOME: home,
+          PATH: '/usr/bin:/bin'
+        }
+      });
+
+      await expectLatexviewToolList(server);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   test('serves a PDF and captures a page through registered tools', async () => {

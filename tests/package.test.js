@@ -21,6 +21,7 @@ describe('package identity', () => {
     const plugin = JSON.parse(await readProjectFile('codex/plugins/latexview/.codex-plugin/plugin.json'));
     const mcp = JSON.parse(await readProjectFile('codex/plugins/latexview/.mcp.json'));
     const mcpSource = await readProjectFile('codex/plugins/latexview/mcp/latexview-mcp.js');
+    const toolSource = await readProjectFile('codex/plugins/latexview/mcp/latexview-tools.js');
     const scriptSource = await readProjectFile('codex/plugins/latexview/scripts/latexview-tools.js');
 
     expect(plugin.skills).toBe('./skills/');
@@ -28,7 +29,9 @@ describe('package identity', () => {
     expect(plugin.interface.capabilities).toEqual(['Read', 'Write', 'Shell']);
     expect(mcp.mcpServers.latexview.command).toBe('node');
     expect(mcp.mcpServers.latexview.args).toContain('./mcp/latexview-mcp.js');
-    expect(mcpSource).toContain("from '../scripts/latexview-tools.js'");
+    expect(mcpSource).toContain("from './latexview-tools.js'");
+    expect(scriptSource).toContain("from '../mcp/latexview-tools.js'");
+    expect(toolSource).toContain('.local/bin/latexview');
 
     for (const toolName of [
       'latexview_serve',
@@ -42,7 +45,7 @@ describe('package identity', () => {
       'latexview_capture',
       'latexview_help'
     ]) {
-      expect(scriptSource).toContain(`name: '${toolName}'`);
+      expect(toolSource).toContain(`name: '${toolName}'`);
     }
   });
 
@@ -51,6 +54,7 @@ describe('package identity', () => {
     const plugin = JSON.parse(await readProjectFile('claude/plugins/latexview/.claude-plugin/plugin.json'));
     const mcp = JSON.parse(await readProjectFile('claude/plugins/latexview/.mcp.json'));
     const mcpSource = await readProjectFile('claude/plugins/latexview/mcp/latexview-mcp.js');
+    const toolSource = await readProjectFile('claude/plugins/latexview/mcp/latexview-tools.js');
     const scriptSource = await readProjectFile('claude/plugins/latexview/scripts/latexview-tools.js');
     const skillSource = await readProjectFile('claude/plugins/latexview/skills/latexview/SKILL.md');
 
@@ -66,7 +70,9 @@ describe('package identity', () => {
       '${CLAUDE_PLUGIN_ROOT}/mcp/latexview-mcp.js'
     ]);
     expect(mcp.mcpServers.latexview.cwd).toBe('${CLAUDE_PLUGIN_ROOT}');
-    expect(mcpSource).toContain("from '../scripts/latexview-tools.js'");
+    expect(mcpSource).toContain("from './latexview-tools.js'");
+    expect(scriptSource).toContain("from '../mcp/latexview-tools.js'");
+    expect(toolSource).toContain('.local/bin/latexview');
     expect(skillSource).toContain('latexview_serve');
 
     for (const toolName of [
@@ -81,7 +87,7 @@ describe('package identity', () => {
       'latexview_capture',
       'latexview_help'
     ]) {
-      expect(scriptSource).toContain(`name: '${toolName}'`);
+      expect(toolSource).toContain(`name: '${toolName}'`);
     }
   });
 

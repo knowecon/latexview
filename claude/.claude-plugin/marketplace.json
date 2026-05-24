@@ -10,7 +10,7 @@
       "displayName": "latexview",
       "source": "./plugins/latexview",
       "description": "Claude Code workflows and tools for inspecting LaTeX PDFs with latexview.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": {
         "name": "Lucas"
       },
