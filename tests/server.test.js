@@ -112,4 +112,27 @@ describe('server', () => {
       await fixture.cleanup();
     }
   });
+
+  test('health endpoint exposes latexview identity without the absolute PDF path', async () => {
+    const fixture = await makePdfFixture();
+    try {
+      const preview = createLatexViewServer({ pdfPath: fixture.pdfPath, watch: false });
+      const url = await listen(preview);
+      const baseUrl = new URL(url).origin;
+
+      const response = await fetch(`${baseUrl}/health`);
+      expect(response.status).toBe(200);
+      const health = await response.json();
+      expect(health).toMatchObject({
+        ok: true,
+        app: 'latexview',
+        schemaVersion: 2,
+        pdfName: 'main.pdf'
+      });
+      expect(health).not.toHaveProperty('pdfPath');
+      expect(Number.isInteger(health.version)).toBe(true);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
 });

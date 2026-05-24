@@ -78,8 +78,13 @@ describe('latexview MCP server', () => {
       'latexview_capture',
       'latexview_find',
       'latexview_help',
+      'latexview_info',
+      'latexview_inspect',
       'latexview_jump',
-      'latexview_serve'
+      'latexview_list',
+      'latexview_serve',
+      'latexview_status',
+      'latexview_stop'
     ]);
 
     const help = await server.request('tools/call', {
@@ -127,6 +132,7 @@ describe('latexview MCP server', () => {
         }
       });
       expect(captured.result.structuredContent.outPath).toBe(webpPath);
+      expect(captured.result.structuredContent.ok).toBe(true);
 
       const bytes = await readFile(webpPath);
       expect(bytes.slice(0, 4).toString('ascii')).toBe('RIFF');
@@ -137,6 +143,69 @@ describe('latexview MCP server', () => {
           process.kill(serverPid, 'SIGTERM');
         } catch {
           // The server may already have exited.
+        }
+      }
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('starts without an explicit port and exposes info/status/list/inspect tools', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'latexview-mcp-tools-'));
+    const pdfPath = join(dir, 'main.pdf');
+    let firstPid;
+    let secondPid;
+
+    try {
+      await writeFile(pdfPath, makePdf(['page one', 'page two', 'page three']));
+      const server = startMcpServer();
+
+      await server.request('initialize', {
+        protocolVersion: '2024-11-05'
+      });
+
+      const info = await server.request('tools/call', {
+        name: 'latexview_info',
+        arguments: { pdfPath }
+      });
+      expect(info.result.structuredContent.pdf.numPages).toBe(3);
+
+      const first = await server.request('tools/call', {
+        name: 'latexview_serve',
+        arguments: { pdfPath, page: 1 }
+      });
+      const second = await server.request('tools/call', {
+        name: 'latexview_serve',
+        arguments: { pdfPath, page: 2 }
+      });
+      firstPid = first.result.structuredContent.pid;
+      secondPid = second.result.structuredContent.pid;
+      expect(first.result.structuredContent.url).not.toBe(second.result.structuredContent.url);
+
+      const status = await server.request('tools/call', {
+        name: 'latexview_status',
+        arguments: { viewerUrl: first.result.structuredContent.url }
+      });
+      expect(status.result.structuredContent.ok).toBe(true);
+
+      const listed = await server.request('tools/call', {
+        name: 'latexview_list',
+        arguments: {}
+      });
+      expect(listed.result.structuredContent.entries.length).toBeGreaterThanOrEqual(2);
+
+      const inspected = await server.request('tools/call', {
+        name: 'latexview_inspect',
+        arguments: { pdfPath, pages: 'first,last' }
+      });
+      expect(inspected.result.structuredContent.pages.map((page) => page.page)).toEqual([1, 3]);
+    } finally {
+      for (const pid of [firstPid, secondPid]) {
+        if (pid) {
+          try {
+            process.kill(pid, 'SIGTERM');
+          } catch {
+            // The server may already have exited.
+          }
         }
       }
       await rm(dir, { recursive: true, force: true });

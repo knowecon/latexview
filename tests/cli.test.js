@@ -117,6 +117,64 @@ describe('cli startup', () => {
     }
   });
 
+  test('runCli info and find JSON use stable structured shapes', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'latexview-cli-json-'));
+    const pdfPath = join(dir, 'main.pdf');
+    const output = [];
+    const errors = [];
+
+    try {
+      await writeFile(pdfPath, makePdf([
+        'first page',
+        'Rare Exact Phrase'
+      ]));
+
+      const info = await runCli(['info', '--json', pdfPath], {
+        stdout: { write: (text) => output.push(text) },
+        stderr: { write: (text) => errors.push(text) }
+      }, {
+        keepAlive: false
+      });
+
+      expect(info.exitCode).toBe(0);
+      const infoJson = JSON.parse(output.splice(0).join(''));
+      expect(infoJson.pdf.numPages).toBe(2);
+
+      const find = await runCli([
+        'find',
+        '--json',
+        '--url',
+        'http://127.0.0.1:4550/?page=1',
+        pdfPath,
+        'rare exact phrase'
+      ], {
+        stdout: { write: (text) => output.push(text) },
+        stderr: { write: (text) => errors.push(text) }
+      }, {
+        keepAlive: false
+      });
+
+      expect(find.exitCode).toBe(0);
+      expect(errors.join('')).toBe('');
+      const findJson = JSON.parse(output.join(''));
+      expect(findJson).toMatchObject({
+        query: 'rare exact phrase',
+        count: 1,
+        jump: { attempted: false },
+        matches: [
+          {
+            page: 2,
+            snippet: expect.stringContaining('Rare Exact Phrase'),
+            url: 'http://127.0.0.1:4550/?page=2'
+          }
+        ]
+      });
+      expect(findJson.matches[0]).not.toHaveProperty('capturePath');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test('runCli capture writes a WebP for the requested page', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'latexview-cli-capture-'));
     const pdfPath = join(dir, 'main.pdf');
@@ -133,6 +191,7 @@ describe('cli startup', () => {
 
       const result = await runCli([
         'capture',
+        '--json',
         pdfPath,
         '2',
         '--out',
@@ -146,8 +205,11 @@ describe('cli startup', () => {
 
       expect(result.exitCode).toBe(0);
       expect(errors.join('')).toBe('');
-      expect(output.join('')).toContain('page 2');
-      expect(output.join('')).toContain(webpOutPath);
+      expect(JSON.parse(output.join(''))).toMatchObject({
+        page: 2,
+        outPath: webpOutPath,
+        ok: true
+      });
 
       const bytes = await readFile(webpOutPath);
       expect(bytes.slice(0, 4).toString('ascii')).toBe('RIFF');

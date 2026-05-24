@@ -86,6 +86,74 @@ describe('parseCliArgs', () => {
     });
   });
 
+  test('parses structured command flags from the spec', () => {
+    expect(parseCliArgs(['info', '--json', 'main.pdf'], { cwd: '/tmp/book' })).toEqual({
+      command: 'info',
+      pdfPath: '/tmp/book/main.pdf',
+      json: true
+    });
+
+    expect(parseCliArgs(['status', '--json', '--url', 'http://127.0.0.1:4550/?page=8'])).toEqual({
+      command: 'status',
+      baseUrl: 'http://127.0.0.1:4550/?page=8',
+      json: true
+    });
+
+    expect(parseCliArgs(['list', '--json'])).toEqual({
+      command: 'list',
+      json: true
+    });
+
+    expect(parseCliArgs(['stop', '--port', '4550', '--json'])).toEqual({
+      command: 'stop',
+      target: { type: 'port', value: 4550 },
+      json: true
+    });
+
+    expect(parseCliArgs([
+      'inspect',
+      '--json',
+      '--pages',
+      'first,middle,last',
+      '--capture',
+      '--dpi',
+      '96',
+      'main.pdf'
+    ], { cwd: '/tmp/book' })).toEqual({
+      command: 'inspect',
+      pdfPath: '/tmp/book/main.pdf',
+      json: true,
+      pageSelection: { type: 'pages', value: 'first,middle,last' },
+      capture: true,
+      dpi: 96,
+      maxPages: undefined
+    });
+  });
+
+  test('rejects stop with no target or multiple targets', () => {
+    expect(() => parseCliArgs(['stop'])).toThrow(/exactly one/i);
+    expect(() => parseCliArgs(['stop', '--port', '4550', '--pid', '123'])).toThrow(/exactly one/i);
+  });
+
+  test('parses find jump-if-unique while keeping JSON explicit', () => {
+    expect(parseCliArgs([
+      'find',
+      '--json',
+      '--jump-if-unique',
+      '--url',
+      'http://127.0.0.1:4545',
+      'main.pdf',
+      'Needle Text'
+    ], { cwd: '/tmp/book' })).toEqual({
+      command: 'find',
+      pdfPath: '/tmp/book/main.pdf',
+      query: 'Needle Text',
+      baseUrl: 'http://127.0.0.1:4545',
+      json: true,
+      jumpIfUnique: true
+    });
+  });
+
   test('defaults capture output to a clear WebP image', () => {
     expect(parseCliArgs([
       'capture',

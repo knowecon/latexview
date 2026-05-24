@@ -3,7 +3,11 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 function normalizeText(text) {
   return text
+    .replace(/\u00b4\u203a/g, '')
     .normalize('NFKC')
+    .replace(/\u00ad/g, '')
+    .replace(/\s?\u0301\u203a/g, '')
+    .replace(/-\s+/g, '')
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
@@ -20,10 +24,10 @@ function makeSnippet(text, query) {
   if (index < 0) index = 0;
 
   const start = Math.max(0, index - 48);
-  const end = Math.min(normalizedText.length, index + normalizedQuery.length + 72);
+  const end = Math.min(text.length, index + normalizedQuery.length + 72);
   const prefix = start > 0 ? '...' : '';
-  const suffix = end < normalizedText.length ? '...' : '';
-  return `${prefix}${normalizedText.slice(start, end)}${suffix}`;
+  const suffix = end < text.length ? '...' : '';
+  return `${prefix}${text.slice(start, end)}${suffix}`;
 }
 
 export function pageUrl(baseUrl, page) {
@@ -33,7 +37,7 @@ export function pageUrl(baseUrl, page) {
   return url.toString();
 }
 
-export async function findTextInPdf(pdfPath, query) {
+export async function findTextInPdf(pdfPath, query, options = {}) {
   const data = new Uint8Array(await readFile(pdfPath));
   const document = await pdfjsLib.getDocument({
     data,
@@ -55,7 +59,8 @@ export async function findTextInPdf(pdfPath, query) {
       if (normalized.includes(normalizedQuery) || compact.includes(compactQuery)) {
         matches.push({
           page: pageNumber,
-          snippet: makeSnippet(text, query)
+          snippet: makeSnippet(text, query),
+          ...(options.baseUrl ? { url: pageUrl(options.baseUrl, pageNumber) } : {})
         });
       }
     }

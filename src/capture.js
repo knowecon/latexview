@@ -72,6 +72,7 @@ export async function capturePageImage({ pdfPath, page, outPath, dpi = 216 }) {
     pdfPath,
     page,
     outPath,
-    dpi
+    dpi,
+    ok: true
   };
 }

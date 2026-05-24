@@ -13,6 +13,11 @@ This folder is a local Codex marketplace root for the `latexview` plugin.
 ## Tools
 
 - `latexview_serve`
+- `latexview_info`
+- `latexview_status`
+- `latexview_list`
+- `latexview_stop`
+- `latexview_inspect`
 - `latexview_find`
 - `latexview_jump`
 - `latexview_capture`

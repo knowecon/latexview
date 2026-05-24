@@ -48,6 +48,14 @@ function runLatexview(args, cwd = process.cwd()) {
   });
 }
 
+function parseJsonOutput(stdout) {
+  try {
+    return JSON.parse(stdout);
+  } catch {
+    return { raw: stdout };
+  }
+}
+
 function startLatexviewServer(params) {
   return new Promise((resolvePromise, reject) => {
     const cwd = params.cwd || process.cwd();
@@ -57,11 +65,13 @@ function startLatexviewServer(params) {
       cliPath,
       '--host',
       params.host || DEFAULT_HOST,
-      '--port',
-      String(params.port ?? DEFAULT_PORT),
       '--page',
       String(page)
     ];
+
+    if (params.port !== undefined) {
+      args.push('--port', String(params.port));
+    }
 
     if (params.open) args.push('--open');
     else args.push('--no-open');
@@ -130,7 +140,7 @@ const tools = [
         pdfPath: { type: 'string', description: 'PDF path, relative to cwd or absolute.' },
         cwd: { type: 'string', description: 'Working directory for resolving relative paths.' },
         host: { type: 'string', default: DEFAULT_HOST },
-        port: { type: 'integer', default: DEFAULT_PORT, minimum: 0, maximum: 65535 },
+        port: { type: 'integer', minimum: 0, maximum: 65535 },
         page: { type: 'integer', default: DEFAULT_PAGE, minimum: 1 },
         open: { type: 'boolean', default: false }
       },
@@ -139,6 +149,86 @@ const tools = [
     async handler(params) {
       const result = await startLatexviewServer(params);
       return textResult(`latexview serving page ${result.page}: ${result.url}\npid: ${result.pid}`, result);
+    }
+  },
+  {
+    name: 'latexview_info',
+    description: 'Read static PDF metadata including page count and dimensions.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pdfPath: { type: 'string', description: 'PDF path, relative to cwd or absolute.' },
+        cwd: { type: 'string', description: 'Working directory for resolving relative paths.' }
+      },
+      required: ['pdfPath']
+    },
+    async handler(params) {
+      const cwd = params.cwd || process.cwd();
+      const pdfPath = resolvePath(cwd, params.pdfPath);
+      const { stdout } = await runLatexview(['info', '--json', pdfPath], cwd);
+      const parsed = parseJsonOutput(stdout);
+      return textResult(stdout.trim(), parsed);
+    }
+  },
+  {
+    name: 'latexview_status',
+    description: 'Check a running latexview viewer by URL/origin.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        viewerUrl: { type: 'string', description: 'Viewer URL or origin. Defaults to http://127.0.0.1:4545.' },
+        cwd: { type: 'string', description: 'Working directory.' }
+      }
+    },
+    async handler(params) {
+      const cwd = params.cwd || process.cwd();
+      const args = ['status', '--json'];
+      if (params.viewerUrl) args.push('--url', params.viewerUrl);
+      const { stdout } = await runLatexview(args, cwd);
+      const parsed = parseJsonOutput(stdout);
+      return textResult(stdout.trim(), parsed);
+    }
+  },
+  {
+    name: 'latexview_list',
+    description: 'List live latexview preview servers from the local lifecycle registry.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cwd: { type: 'string', description: 'Working directory.' }
+      }
+    },
+    async handler(params) {
+      const cwd = params.cwd || process.cwd();
+      const { stdout } = await runLatexview(['list', '--json'], cwd);
+      const parsed = parseJsonOutput(stdout);
+      return textResult(stdout.trim(), parsed);
+    }
+  },
+  {
+    name: 'latexview_stop',
+    description: 'Stop latexview preview servers through the registry without relying on pid alone.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        viewerUrl: { type: 'string', description: 'Viewer URL/origin to stop.' },
+        port: { type: 'integer', minimum: 0, maximum: 65535 },
+        pid: { type: 'integer', minimum: 1 },
+        all: { type: 'boolean', description: 'Stop all live latexview servers.' },
+        cwd: { type: 'string', description: 'Working directory.' }
+      }
+    },
+    async handler(params) {
+      const cwd = params.cwd || process.cwd();
+      const args = ['stop', '--json'];
+      if (params.viewerUrl) args.push('--url', params.viewerUrl);
+      else if (params.port !== undefined) args.push('--port', String(params.port));
+      else if (params.pid !== undefined) args.push('--pid', String(params.pid));
+      else if (params.all) args.push('--all');
+      else throw new Error('latexview_stop requires viewerUrl, port, pid, or all.');
+      const { stdout } = await runLatexview(args, cwd);
+      const parsed = parseJsonOutput(stdout);
+      return textResult(stdout.trim(), parsed);
     }
   },
   {
@@ -170,6 +260,43 @@ const tools = [
         parsed = { raw: stdout };
       }
       return textResult(stdout.trim(), { pdfPath, query: params.query, result: parsed });
+    }
+  },
+  {
+    name: 'latexview_inspect',
+    description: 'Inspect selected PDF pages and return stable QA warnings without returning page images.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pdfPath: { type: 'string', description: 'PDF path, relative to cwd or absolute.' },
+        cwd: { type: 'string', description: 'Working directory for resolving relative paths.' },
+        pages: { type: 'string', description: 'Comma-separated page spec such as first,middle,last.' },
+        range: { type: 'string', description: 'Range spec such as 1-5 or middle-last.' },
+        from: { type: 'string', description: 'Range start endpoint.' },
+        to: { type: 'string', description: 'Range end endpoint.' },
+        all: { type: 'boolean', description: 'Inspect all pages; large PDFs require maxPages.' },
+        capture: { type: 'boolean', description: 'Render pages temporarily for pixel-backed blank detection.' },
+        dpi: { type: 'integer', minimum: 1, default: 72 },
+        maxPages: { type: 'integer', minimum: 1 }
+      },
+      required: ['pdfPath']
+    },
+    async handler(params) {
+      const cwd = params.cwd || process.cwd();
+      const pdfPath = resolvePath(cwd, params.pdfPath);
+      const args = ['inspect', '--json'];
+      if (params.pages) args.push('--pages', params.pages);
+      if (params.range) args.push('--range', params.range);
+      if (params.from) args.push('--from', params.from);
+      if (params.to) args.push('--to', params.to);
+      if (params.all) args.push('--all');
+      if (params.capture) args.push('--capture');
+      if (params.dpi) args.push('--dpi', String(Math.trunc(params.dpi)));
+      if (params.maxPages) args.push('--max-pages', String(Math.trunc(params.maxPages)));
+      args.push(pdfPath);
+      const { stdout } = await runLatexview(args, cwd);
+      const parsed = parseJsonOutput(stdout);
+      return textResult(stdout.trim(), parsed);
     }
   },
   {
@@ -217,6 +344,7 @@ const tools = [
       const outPath = normalizeWebpPath(cwd, pdfPath, page, params.outPath);
       const { stdout } = await runLatexview([
         'capture',
+        '--json',
         pdfPath,
         String(page),
         '--out',
@@ -224,7 +352,8 @@ const tools = [
         '--dpi',
         String(dpi)
       ], cwd);
-      return textResult(stdout.trim(), { pdfPath, page, outPath, dpi });
+      const parsed = parseJsonOutput(stdout);
+      return textResult(stdout.trim(), parsed);
     }
   },
   {

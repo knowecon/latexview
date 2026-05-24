@@ -142,7 +142,13 @@ export function createLatexViewServer(options) {
       }
 
       if (url.pathname === '/health') {
-        sendJson(response, 200, { ok: true, version, pdfName });
+        sendJson(response, 200, {
+          ok: true,
+          app: 'latexview',
+          schemaVersion: 2,
+          version,
+          pdfName
+        });
         return;
       }
 

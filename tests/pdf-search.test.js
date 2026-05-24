@@ -49,4 +49,27 @@ describe('PDF text search', () => {
     expect(text).toContain('http://127.0.0.1:4545/?page=4');
     expect(text).toContain('... needle ...');
   });
+
+  test('preserves original-case snippets and includes URLs in JSON-ready matches', async () => {
+    await withPdf(['Intro page', 'Rare Exact Phrase Lives Here'], async (pdfPath) => {
+      const matches = await findTextInPdf(pdfPath, 'rare exact phrase', {
+        baseUrl: 'http://127.0.0.1:4550/?page=1'
+      });
+
+      expect(matches).toEqual([
+        expect.objectContaining({
+          page: 2,
+          snippet: expect.stringContaining('Rare Exact Phrase'),
+          url: 'http://127.0.0.1:4550/?page=2'
+        })
+      ]);
+    });
+  });
+
+  test('matches soft hyphen and line-end hyphenation differences', async () => {
+    await withPdf(['micro\u00adeconomics and macro- economics'], async (pdfPath) => {
+      expect((await findTextInPdf(pdfPath, 'microeconomics')).map((match) => match.page)).toEqual([1]);
+      expect((await findTextInPdf(pdfPath, 'macroeconomics')).map((match) => match.page)).toEqual([1]);
+    });
+  });
 });

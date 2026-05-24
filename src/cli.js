@@ -1,7 +1,17 @@
 import { spawn } from 'node:child_process';
 import { parseCliArgs, helpText } from './args.js';
 import { capturePageImage } from './capture.js';
+import { formatInspectResult, inspectPdf } from './inspect.js';
+import { formatPdfInfo, readPdfInfo } from './pdf-info.js';
 import { findTextInPdf, formatFindResults, pageUrl } from './pdf-search.js';
+import {
+  getStatus,
+  listLiveEntries,
+  makeRegistryEntry,
+  removeRegistryEntry,
+  stopEntries,
+  writeRegistryEntry
+} from './registry.js';
 import { createLatexViewServer } from './server.js';
 
 const fallbackAttempts = 25;
@@ -14,6 +24,7 @@ export function buildStartupMessage({ pdfPath, url }) {
   return [
     `latexview serving: ${pdfPath}`,
     `Viewer: ${url}`,
+    `PID: ${process.pid}`,
     'Press Ctrl+C to stop.'
   ].join('\n');
 }
@@ -41,13 +52,24 @@ export async function startPreview(config) {
     try {
       await preview.listen({ host: config.host, port: currentPort });
       const viewerUrl = preview.url({ page: config.page });
-      return {
-        close: preview.close,
+      const result = {
+        async close() {
+          try {
+            await preview.close();
+          } finally {
+            await removeRegistryEntry(result.port, { stateDir: config.stateDir });
+          }
+        },
         pdfPath: config.pdfPath,
         port: preview.address().port,
-        server: preview.server,
         url: viewerUrl
       };
+      try {
+        await writeRegistryEntry(makeRegistryEntry({ preview: result, config }), { stateDir: config.stateDir });
+      } catch (error) {
+        result.registryWarning = error.message;
+      }
+      return result;
     } catch (error) {
       await preview.close();
       lastError = error;
@@ -71,7 +93,7 @@ export async function runCli(argv = process.argv.slice(2), io = {}, lifecycle = 
     config = parseCliArgs(argv);
   } catch (error) {
     stderr.write(`${error.message}\n`);
-    return 1;
+    return { exitCode: 1 };
   }
 
   if (config.command === 'help') {
@@ -81,16 +103,33 @@ export async function runCli(argv = process.argv.slice(2), io = {}, lifecycle = 
 
   if (config.command === 'find') {
     try {
-      const matches = await findTextInPdf(config.pdfPath, config.query);
+      const matches = await findTextInPdf(config.pdfPath, config.query, {
+        baseUrl: config.baseUrl
+      });
+      let jump = { attempted: false };
+      if (config.jumpIfUnique && config.baseUrl && matches.length === 1) {
+        try {
+          const result = await jumpViewer({ baseUrl: config.baseUrl, page: matches[0].page });
+          jump = { attempted: true, ok: true, url: result.url };
+        } catch (error) {
+          jump = { attempted: true, ok: false, error: error.message };
+        }
+      }
+      const structured = {
+        query: config.query,
+        count: matches.length,
+        matches,
+        jump
+      };
       const output = config.json
-        ? `${JSON.stringify({ query: config.query, matches }, null, 2)}\n`
+        ? `${JSON.stringify(structured, null, 2)}\n`
         : formatFindResults({
           query: config.query,
           matches,
           baseUrl: config.baseUrl
         });
       stdout.write(output);
-      return { exitCode: 0, matches };
+      return { exitCode: 0, ...structured };
     } catch (error) {
       stderr.write(`${error.message}\n`);
       return { exitCode: 1 };
@@ -111,7 +150,9 @@ export async function runCli(argv = process.argv.slice(2), io = {}, lifecycle = 
   if (config.command === 'capture') {
     try {
       const capture = await capturePageImage(config);
-      stdout.write(`Captured page ${capture.page}: ${capture.outPath}\n`);
+      stdout.write(config.json
+        ? `${JSON.stringify(capture, null, 2)}\n`
+        : `Captured page ${capture.page}: ${capture.outPath}\n`);
       return { exitCode: 0, capture };
     } catch (error) {
       stderr.write(`${error.message}\n`);
@@ -119,7 +160,60 @@ export async function runCli(argv = process.argv.slice(2), io = {}, lifecycle = 
     }
   }
 
+  if (config.command === 'info') {
+    try {
+      const info = await readPdfInfo(config.pdfPath);
+      stdout.write(config.json ? `${JSON.stringify(info, null, 2)}\n` : `${formatPdfInfo(info)}\n`);
+      return { exitCode: 0, info };
+    } catch (error) {
+      stderr.write(`${error.message}\n`);
+      return { exitCode: 1 };
+    }
+  }
+
+  if (config.command === 'inspect') {
+    try {
+      const inspection = await inspectPdf(config.pdfPath, config);
+      stdout.write(config.json ? `${JSON.stringify(inspection, null, 2)}\n` : formatInspectResult(inspection));
+      return { exitCode: 0, inspection };
+    } catch (error) {
+      stderr.write(`${error.message}\n`);
+      return { exitCode: 1 };
+    }
+  }
+
+  if (config.command === 'status') {
+    const status = await getStatus(config.baseUrl, { stateDir: lifecycle.stateDir });
+    stdout.write(config.json
+      ? `${JSON.stringify(status, null, 2)}\n`
+      : `${status.ok ? `latexview ok: ${status.url}` : `${status.error}: ${status.url}`}\n`);
+    return { exitCode: status.ok ? 0 : 1, status };
+  }
+
+  if (config.command === 'list') {
+    const listed = await listLiveEntries({ stateDir: lifecycle.stateDir });
+    if (config.json) {
+      stdout.write(`${JSON.stringify(listed, null, 2)}\n`);
+    } else if (listed.entries.length === 0) {
+      stdout.write('No live latexview servers.\n');
+    } else {
+      stdout.write(`${listed.entries.map((entry) => `${entry.pid} ${entry.url} ${entry.pdfPath}`).join('\n')}\n`);
+    }
+    return { exitCode: 0, list: listed };
+  }
+
+  if (config.command === 'stop') {
+    const stopped = await stopEntries(config.target, { stateDir: lifecycle.stateDir });
+    const failed = stopped.results.some((result) => result.status === 'failed');
+    const exitCode = stopped.results.length === 0 || failed ? 1 : 0;
+    stdout.write(config.json
+      ? `${JSON.stringify(stopped, null, 2)}\n`
+      : `${stopped.results.length === 0 ? 'No matching latexview servers.' : stopped.results.map((result) => `${result.status}: ${result.url}`).join('\n')}\n`);
+    return { exitCode, stop: stopped };
+  }
+
   try {
+    config.stateDir = lifecycle.stateDir;
     const preview = await startPreview(config);
     stdout.write(`${buildStartupMessage(preview)}\n`);
     if (config.open) {

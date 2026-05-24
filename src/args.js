@@ -1,9 +1,14 @@
 import { basename, extname, resolve } from 'node:path';
 
-const usage = `Usage: latexview [options] <file.pdf>
-       latexview find [--json] [--url <viewer-url>] <file.pdf> <text>
+const usage = `Usage: latexview [serve] [options] <file.pdf>
+       latexview info [--json] <file.pdf>
+       latexview status [--json] [--url <viewer-url>]
+       latexview list [--json]
+       latexview stop [--json] (--url <viewer-url> | --port <port> | --pid <pid> | --all)
+       latexview inspect [--json] [--pages <spec> | --range <from-to> | --from <n> --to <n> | --all] [--capture] [--dpi <dpi>] [--max-pages <n>] <file.pdf>
+       latexview find [--json] [--url <viewer-url>] [--jump-if-unique] <file.pdf> <text>
        latexview jump [--url <viewer-url>] <page>
-       latexview capture [--out <image.webp>] [--dpi <dpi>] <file.pdf> <page>
+       latexview capture [--json] [--out <image.webp>] [--dpi <dpi>] <file.pdf> <page>
 
 Options:
   --host <host>    Host to bind, default 127.0.0.1
@@ -36,6 +41,22 @@ function readPort(value) {
   return parsed;
 }
 
+function readPid(value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error('pid must be a positive integer.');
+  }
+  return parsed;
+}
+
+function readRequiredValue(argv, index, option) {
+  const value = argv[index + 1];
+  if (!value || value.startsWith('-')) {
+    throw new Error(`${option} requires a value.\n\n${usage}`);
+  }
+  return value;
+}
+
 export function parseCliArgs(argv, options = {}) {
   const cwd = options.cwd ?? process.cwd();
 
@@ -43,18 +64,21 @@ export function parseCliArgs(argv, options = {}) {
     return { command: 'help' };
   }
 
-  if (argv[0] === 'find') {
-    return parseFindArgs(argv.slice(1), cwd);
-  }
+  const command = argv[0];
+  if (command === 'serve') return parseServeArgs(argv.slice(1), cwd);
+  if (command === 'info') return parseInfoArgs(argv.slice(1), cwd);
+  if (command === 'status') return parseStatusArgs(argv.slice(1));
+  if (command === 'list') return parseListArgs(argv.slice(1));
+  if (command === 'stop') return parseStopArgs(argv.slice(1));
+  if (command === 'inspect') return parseInspectArgs(argv.slice(1), cwd);
+  if (command === 'find') return parseFindArgs(argv.slice(1), cwd);
+  if (command === 'jump' || command === 'goto') return parseJumpArgs(argv.slice(1));
+  if (command === 'capture' || command === 'shot') return parseCaptureArgs(argv.slice(1), cwd);
 
-  if (argv[0] === 'jump' || argv[0] === 'goto') {
-    return parseJumpArgs(argv.slice(1));
-  }
+  return parseServeArgs(argv, cwd);
+}
 
-  if (argv[0] === 'capture' || argv[0] === 'shot') {
-    return parseCaptureArgs(argv.slice(1), cwd);
-  }
-
+function parseServeArgs(argv, cwd) {
   const parsed = {
     command: 'serve',
     pdfPath: undefined,
@@ -69,14 +93,14 @@ export function parseCliArgs(argv, options = {}) {
     const token = argv[index];
 
     if (token === '--host') {
-      parsed.host = argv[index + 1];
+      parsed.host = readRequiredValue(argv, index, token);
       index += 1;
     } else if (token === '--port') {
-      parsed.port = readPort(argv[index + 1]);
+      parsed.port = readPort(readRequiredValue(argv, index, token));
       parsed.requestedPort = true;
       index += 1;
     } else if (token === '--page') {
-      parsed.page = readPositiveInteger('page', argv[index + 1]);
+      parsed.page = readPositiveInteger('page', readRequiredValue(argv, index, token));
       index += 1;
     } else if (token === '--open') {
       parsed.open = true;
@@ -98,18 +122,184 @@ export function parseCliArgs(argv, options = {}) {
   return parsed;
 }
 
-function readRequiredValue(argv, index, option) {
-  const value = argv[index + 1];
-  if (!value || value.startsWith('-')) {
-    throw new Error(`${option} requires a value.\n\n${usage}`);
+function parseInfoArgs(argv, cwd) {
+  const positionals = [];
+  let json = false;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === '--json') {
+      json = true;
+    } else if (token.startsWith('-')) {
+      throw new Error(`Unknown option: ${token}\n\n${usage}`);
+    } else {
+      positionals.push(token);
+    }
   }
-  return value;
+
+  if (positionals.length !== 1) {
+    throw new Error(`info requires exactly one PDF path.\n\n${usage}`);
+  }
+
+  return {
+    command: 'info',
+    pdfPath: resolve(cwd, positionals[0]),
+    json
+  };
+}
+
+function parseStatusArgs(argv) {
+  let json = false;
+  let baseUrl = defaultBaseUrl;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === '--json') {
+      json = true;
+    } else if (token === '--url') {
+      baseUrl = readRequiredValue(argv, index, token);
+      index += 1;
+    } else if (token.startsWith('-')) {
+      throw new Error(`Unknown option: ${token}\n\n${usage}`);
+    } else {
+      throw new Error(`Unexpected argument: ${token}\n\n${usage}`);
+    }
+  }
+
+  return { command: 'status', baseUrl, json };
+}
+
+function parseListArgs(argv) {
+  let json = false;
+  for (const token of argv) {
+    if (token === '--json') json = true;
+    else if (token.startsWith('-')) throw new Error(`Unknown option: ${token}\n\n${usage}`);
+    else throw new Error(`Unexpected argument: ${token}\n\n${usage}`);
+  }
+  return { command: 'list', json };
+}
+
+function parseStopArgs(argv) {
+  let json = false;
+  const targets = [];
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === '--json') {
+      json = true;
+    } else if (token === '--url') {
+      targets.push({ type: 'url', value: readRequiredValue(argv, index, token) });
+      index += 1;
+    } else if (token === '--port') {
+      targets.push({ type: 'port', value: readPort(readRequiredValue(argv, index, token)) });
+      index += 1;
+    } else if (token === '--pid') {
+      targets.push({ type: 'pid', value: readPid(readRequiredValue(argv, index, token)) });
+      index += 1;
+    } else if (token === '--all') {
+      targets.push({ type: 'all', value: true });
+    } else if (token.startsWith('-')) {
+      throw new Error(`Unknown option: ${token}\n\n${usage}`);
+    } else {
+      throw new Error(`Unexpected argument: ${token}\n\n${usage}`);
+    }
+  }
+
+  if (targets.length !== 1) {
+    throw new Error(`stop requires exactly one target selector.\n\n${usage}`);
+  }
+
+  return { command: 'stop', target: targets[0], json };
+}
+
+function parseInspectArgs(argv, cwd) {
+  const positionals = [];
+  let json = false;
+  let capture = false;
+  let dpi = 72;
+  let maxPages;
+  const sources = [];
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === '--json') {
+      json = true;
+    } else if (token === '--capture') {
+      capture = true;
+    } else if (token === '--dpi') {
+      dpi = readPositiveInteger('dpi', readRequiredValue(argv, index, token));
+      index += 1;
+    } else if (token === '--max-pages') {
+      maxPages = readPositiveInteger('max-pages', readRequiredValue(argv, index, token));
+      index += 1;
+    } else if (token === '--pages') {
+      sources.push({ type: 'pages', value: readRequiredValue(argv, index, token) });
+      index += 1;
+    } else if (token === '--range') {
+      sources.push({ type: 'range', value: readRequiredValue(argv, index, token) });
+      index += 1;
+    } else if (token === '--from') {
+      sources.push({ type: 'from', value: readRequiredValue(argv, index, token) });
+      index += 1;
+    } else if (token === '--to') {
+      sources.push({ type: 'to', value: readRequiredValue(argv, index, token) });
+      index += 1;
+    } else if (token === '--all') {
+      sources.push({ type: 'all', value: true });
+    } else if (token.startsWith('-')) {
+      throw new Error(`Unknown option: ${token}\n\n${usage}`);
+    } else {
+      positionals.push(token);
+    }
+  }
+
+  if (positionals.length !== 1) {
+    throw new Error(`inspect requires exactly one PDF path.\n\n${usage}`);
+  }
+
+  const from = sources.find((source) => source.type === 'from');
+  const to = sources.find((source) => source.type === 'to');
+  const nonFromToSources = sources.filter((source) => source.type !== 'from' && source.type !== 'to');
+  let pageSelection;
+
+  if (from || to) {
+    if (!from || !to) {
+      throw new Error('inspect requires --from and --to to be supplied together.');
+    }
+    if (nonFromToSources.length > 0) {
+      throw new Error('inspect page source flags are mutually exclusive.');
+    }
+    pageSelection = { type: 'fromTo', from: from.value, to: to.value };
+  } else if (nonFromToSources.length === 0) {
+    pageSelection = { type: 'default' };
+  } else if (nonFromToSources.length === 1) {
+    pageSelection = nonFromToSources[0].type === 'all'
+      ? { type: 'all' }
+      : nonFromToSources[0];
+  } else {
+    throw new Error('inspect page source flags are mutually exclusive.');
+  }
+
+  if (maxPages !== undefined) {
+    pageSelection.maxPages = maxPages;
+  }
+
+  return {
+    command: 'inspect',
+    pdfPath: resolve(cwd, positionals[0]),
+    json,
+    pageSelection,
+    capture,
+    dpi,
+    maxPages
+  };
 }
 
 function parseFindArgs(argv, cwd) {
   const positionals = [];
   let baseUrl;
   let json = false;
+  let jumpIfUnique = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -118,6 +308,8 @@ function parseFindArgs(argv, cwd) {
       index += 1;
     } else if (token === '--json') {
       json = true;
+    } else if (token === '--jump-if-unique') {
+      jumpIfUnique = true;
     } else if (token.startsWith('-')) {
       throw new Error(`Unknown option: ${token}\n\n${usage}`);
     } else {
@@ -134,7 +326,8 @@ function parseFindArgs(argv, cwd) {
     pdfPath: resolve(cwd, positionals[0]),
     query: positionals.slice(1).join(' '),
     baseUrl,
-    json
+    json,
+    ...(jumpIfUnique ? { jumpIfUnique } : {})
   };
 }
 
@@ -183,6 +376,7 @@ function parseCaptureArgs(argv, cwd) {
   const positionals = [];
   let outPath;
   let dpi = 216;
+  let json = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -192,6 +386,8 @@ function parseCaptureArgs(argv, cwd) {
     } else if (token === '--dpi') {
       dpi = readPositiveInteger('dpi', readRequiredValue(argv, index, token));
       index += 1;
+    } else if (token === '--json') {
+      json = true;
     } else if (token.startsWith('-')) {
       throw new Error(`Unknown option: ${token}\n\n${usage}`);
     } else {
@@ -211,6 +407,7 @@ function parseCaptureArgs(argv, cwd) {
     pdfPath,
     page,
     outPath: outPath ?? defaultCapturePath(cwd, pdfPath, page),
-    dpi
+    dpi,
+    ...(json ? { json } : {})
   };
 }

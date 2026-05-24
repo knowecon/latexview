@@ -5,6 +5,11 @@ This folder is a Pi package that exposes `latexview` as extension tools.
 ## Provides
 
 - `latexview_serve`: start the preview server and return URL/pid.
+- `latexview_info`: read page count, dimensions, and file metadata.
+- `latexview_status`: check a running viewer.
+- `latexview_list`: list live preview servers from the local registry.
+- `latexview_stop`: stop registered preview servers safely.
+- `latexview_inspect`: inspect selected pages and return QA warnings.
 - `latexview_find`: find candidate pages for rendered text.
 - `latexview_jump`: jump an open viewer to a page.
 - `latexview_capture`: capture a PDF page as WebP.
