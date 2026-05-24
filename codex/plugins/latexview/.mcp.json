@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "latexview": {
+      "command": "node",
+      "args": [
+        "./mcp/latexview-mcp.js"
+      ],
+      "cwd": "."
+    }
+  }
+}

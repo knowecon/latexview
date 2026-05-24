@@ -1,0 +1,53 @@
+import { describe, expect, test } from 'vitest';
+import { readFile } from 'node:fs/promises';
+
+const root = new URL('../', import.meta.url);
+
+async function readProjectFile(path) {
+  return readFile(new URL(path, root), 'utf8');
+}
+
+describe('package identity', () => {
+  test('publishes the latexview command and package name', async () => {
+    const pkg = JSON.parse(await readProjectFile('package.json'));
+
+    expect(pkg.name).toBe('latexview');
+    expect(pkg.bin).toEqual({
+      latexview: './bin/latexview.js'
+    });
+  });
+
+  test('Codex plugin exposes the full latexview CLI through MCP tools', async () => {
+    const plugin = JSON.parse(await readProjectFile('codex/plugins/latexview/.codex-plugin/plugin.json'));
+    const mcp = JSON.parse(await readProjectFile('codex/plugins/latexview/.mcp.json'));
+    const serverSource = await readProjectFile('codex/plugins/latexview/mcp/latexview-mcp.js');
+
+    expect(plugin.mcpServers).toBe('./.mcp.json');
+    expect(mcp.mcpServers.latexview.command).toBe('node');
+    expect(mcp.mcpServers.latexview.args).toContain('./mcp/latexview-mcp.js');
+
+    for (const toolName of [
+      'latexview_serve',
+      'latexview_find',
+      'latexview_jump',
+      'latexview_capture',
+      'latexview_help'
+    ]) {
+      expect(serverSource).toContain(`name: '${toolName}'`);
+    }
+  });
+
+  test('Pi extension wraps every latexview CLI command as a tool', async () => {
+    const extensionSource = await readProjectFile('pi/extensions/latexview.js');
+
+    for (const toolName of [
+      'latexview_serve',
+      'latexview_find',
+      'latexview_jump',
+      'latexview_capture',
+      'latexview_help'
+    ]) {
+      expect(extensionSource).toContain(`name: '${toolName}'`);
+    }
+  });
+});

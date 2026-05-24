@@ -1,0 +1,20 @@
+{
+  "name": "latexview-local",
+  "interface": {
+    "displayName": "latexview Local"
+  },
+  "plugins": [
+    {
+      "name": "latexview",
+      "source": {
+        "source": "local",
+        "path": "./plugins/latexview"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

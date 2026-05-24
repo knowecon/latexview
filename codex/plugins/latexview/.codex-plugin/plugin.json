@@ -1,0 +1,36 @@
+{
+  "name": "latexview",
+  "version": "0.1.0",
+  "description": "Codex workflows for inspecting LaTeX PDFs with latexview.",
+  "author": {
+    "name": "Lucas"
+  },
+  "license": "MIT",
+  "keywords": [
+    "latex",
+    "pdf",
+    "preview",
+    "webp",
+    "codex"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "latexview",
+    "shortDescription": "Preview, search, jump, and capture LaTeX PDFs.",
+    "longDescription": "latexview gives Codex a project-aware workflow for serving LaTeX PDFs in a browser, finding rendered text, jumping to pages, and capturing crisp WebP page images.",
+    "developerName": "Lucas",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write",
+      "Shell"
+    ],
+    "defaultPrompt": [
+      "Open this PDF with latexview.",
+      "Find this rendered text in the PDF.",
+      "Capture this PDF page as WebP."
+    ],
+    "brandColor": "#2563EB"
+  }
+}

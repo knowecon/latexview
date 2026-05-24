@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>latexview</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="toolbar">
+        <div class="brand">
+          <span class="brand-mark">TeX</span>
+          <span class="file-name" id="file-name">main.pdf</span>
+        </div>
+        <nav class="page-controls" aria-label="Page navigation">
+          <button class="icon-button" id="prev-page" type="button" title="Previous page" aria-label="Previous page">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"></path></svg>
+          </button>
+          <label class="page-jump">
+            <input id="page-input" type="number" min="1" value="1" aria-label="Page number">
+            <span>/</span>
+            <span id="page-count">?</span>
+          </label>
+          <button class="icon-button" id="next-page" type="button" title="Next page" aria-label="Next page">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>
+          </button>
+        </nav>
+        <div class="status" id="status" aria-live="polite">Loading</div>
+      </header>
+      <div class="workspace">
+        <section class="stage" id="stage" aria-label="PDF page preview">
+          <canvas id="pdf-canvas"></canvas>
+          <div class="message" id="message" hidden></div>
+        </section>
+        <aside class="thumbnail-panel" id="thumbnail-rail" aria-label="Page thumbnails">
+          <div class="thumbnail-header">
+            <span>Pages</span>
+            <span id="thumbnail-count">0</span>
+          </div>
+          <div class="thumbnail-viewport" id="thumbnail-viewport">
+            <div class="thumbnail-content" id="thumbnail-content"></div>
+          </div>
+        </aside>
+      </div>
+    </main>
+    <script type="module" src="/client.js"></script>
+  </body>
+</html>

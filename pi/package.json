@@ -1,0 +1,30 @@
+{
+  "name": "latexview-pi-extension",
+  "version": "0.1.0",
+  "description": "Pi package that exposes latexview PDF preview helpers as extension tools.",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "latex",
+    "pdf",
+    "webp"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "check": "node --check extensions/latexview.js && node -e \"JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')); console.log('pi package ok')\"",
+    "pack:dry": "npm pack --dry-run --json"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "name": "latexview",
+  "version": "0.1.0",
+  "description": "Local LaTeX PDF preview server with hot reload, rendered-text lookup, page jumps, and WebP capture.",
+  "license": "MIT",
+  "type": "module",
+  "homepage": "https://github.com/lulucatdev/latexview#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lulucatdev/latexview.git"
+  },
+  "keywords": [
+    "latex",
+    "pdf",
+    "preview",
+    "codex",
+    "pi",
+    "webp"
+  ],
+  "bin": {
+    "latexview": "./bin/latexview.js"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "smoke": "node scripts/smoke.js"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^5.4.296"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4",
+    "playwright": "^1.53.2"
+  }
+}
